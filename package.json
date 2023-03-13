@@ -15,6 +15,7 @@
     "react-app:start": "yarn workspace @scaffold-eth/react-app start",
     "react-app:test": "yarn workspace @scaffold-eth/react-app test",
     "build": "yarn workspace @scaffold-eth/react-app build --max-old-space-size=12288",
+    "prettier": "yarn workspace @scaffold-eth/react-app prettier",
     "chain": "yarn workspace @scaffold-eth/hardhat chain",
     "fork": "yarn workspace @scaffold-eth/hardhat fork",
     "node": "yarn workspace @scaffold-eth/hardhat chain",
@@ -36,8 +37,10 @@
     "wallet": "cd packages/hardhat && npx hardhat wallet",
     "fundedwallet": "cd packages/hardhat && npx hardhat fundedwallet",
     "flatten": "cd packages/hardhat && npx hardhat flatten",
-    "graph-run-node": "cd docker/graph-node && docker-compose up",
-    "graph-remove-node": "cd docker/graph-node && docker-compose down",
+    "clean": "cd packages/hardhat && npx hardhat clean",
+    "run-graph-node": "yarn workspace @scaffold-eth/services run-graph-node",
+    "remove-graph-node": "yarn workspace @scaffold-eth/services remove-graph-node",
+    "clean-graph-node": "yarn workspace @scaffold-eth/services clean-graph-node",
     "graph-prepare": "mustache packages/subgraph/config/config.json packages/subgraph/src/subgraph.template.yaml > packages/subgraph/subgraph.yaml",
     "graph-codegen": "yarn workspace @scaffold-eth/subgraph graph codegen",
     "graph-build": "yarn workspace @scaffold-eth/subgraph graph build",
@@ -48,7 +51,9 @@
     "deploy-and-graph": "yarn deploy && yarn graph-ship-local",
     "theme": "yarn workspace @scaffold-eth/react-app theme",
     "watch-theme": "yarn workspace @scaffold-eth/react-app watch",
-    "backend": "cd packages/backend && node index"
+    "postinstall": "husky install",
+    "backend": "yarn workspace @scaffold-eth/backend start",
+    "verify": "yarn workspace @scaffold-eth/hardhat verify"
   },
   "workspaces": {
     "packages": [
@@ -58,14 +63,13 @@
       "**/@graphprotocol/graph-ts",
       "**/@graphprotocol/graph-ts/**",
       "**/hardhat",
-      "**/hardhat/**"
+      "**/hardhat/**",
+      "**/hardhat-ts",
+      "**/hardhat-ts/**"
     ]
   },
-  "dependencies": {
-    "@ant-design/icons": "^4.6.2",
-    "browserlist": "^1.0.1",
-    "caniuse-lite": "^1.0.30001218",
-    "cors": "^2.8.5",
-    "postcss-browser-comments": "^3.0.0"
+  "devDependencies": {
+    "husky": "^7.0.2",
+    "nodemon": "^2.0.20"
   }
 }
