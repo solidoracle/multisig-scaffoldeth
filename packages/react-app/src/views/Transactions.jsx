@@ -1,193 +1,197 @@
-import React, { useCallback, useEffect, useState } from "react";
-import { Button, List, Divider, Input, Card, DatePicker, Slider, Switch, Progress, Spin } from "antd";
-import { SyncOutlined } from "@ant-design/icons";
-import { parseEther, formatEther } from "@ethersproject/units";
+import { Card, Button, Row, List, Divider } from "antd";
+import React from "react";
+import { useEffect } from "react";
+import { useState } from "react";
+import Blockies from "react-blockies";
+import axios from "axios";
+import { useContractLoader, useContractReader } from "eth-hooks";
 import { ethers } from "ethers";
-import { Address, AddressInput, Balance, Blockie, TransactionListItem } from "../components";
-import { useContractReader, useEventListener, usePoller } from "../hooks";
+import Address from "../components/Address";
+import Events from "../components/Events";
+import { DeleteOutlined } from "@ant-design/icons";
 
-const axios = require("axios");
-
-const DEBUG = false;
-
-export default function Transactions({
-  poolServerUrl,
-  contractName,
-  signaturesRequired,
+function Transactions({
+  memberRole,
   address,
-  nonce,
-  userProvider,
-  mainnetProvider,
+  apiBaseUrl,
   localProvider,
-  yourLocalBalance,
-  price,
-  tx,
-  readContracts,
+  mainnetProvider,
   writeContracts,
-  blockExplorer,
+  neededSigns,
+  signer,
+  members,
+  txHelper,
+  readContracts,
 }) {
-  const [transactions, setTransactions] = useState();
-  usePoller(() => {
-    const getTransactions = async () => {
-      if (true) console.log("🛰 Requesting Transaction List");
-      const res = await axios.get(
-        poolServerUrl + readContracts[contractName].address + "_" + localProvider._network.chainId,
-      );
-      const newTransactions = [];
-      for (const i in res.data) {
-        // console.log("look through signatures of ",res.data[i])
-        const thisNonce = ethers.BigNumber.from(res.data[i].nonce);
-        if (thisNonce && nonce && thisNonce.gte(nonce)) {
-          const validSignatures = [];
-          for (const s in res.data[i].signatures) {
-            // console.log("RECOVER:",res.data[i].signatures[s],res.data[i].hash)
-            const signer = await readContracts[contractName].recover(res.data[i].hash, res.data[i].signatures[s]);
-            const isOwner = await readContracts[contractName].isOwner(signer);
-            if (signer && isOwner) {
-              validSignatures.push({ signer, signature: res.data[i].signatures[s] });
-            }
-          }
-          const update = { ...res.data[i], validSignatures };
-          // console.log("update",update)
-          newTransactions.push(update);
-        }
-      }
-      setTransactions(newTransactions);
-      console.log("Loaded",newTransactions.length)
-    };
-    if (readContracts) getTransactions();
-  }, 3777);
+  // const contracts = useContractLoader(signer, contractConfig, chainId);
+  const MultiSigCm = writeContracts ? writeContracts["MultiSigCm"] : "";
+  const enumRole = ["null", "admin", "user", "dude"]; //just to remember
+  const [loading, setLoading] = useState(false);
+  const [txPending, setTxPending] = useState([]);
 
-  const getSortedSigList = async (allSigs, newHash) => {
-    console.log("allSigs", allSigs);
+  // const executeTx = useContractLoader(writeContracts, "MultiSigCm", "execute")
 
-    const sigList = [];
-    for (const s in allSigs) {
-      console.log("SIG", allSigs[s]);
-      const recover = await readContracts[contractName].recover(newHash, allSigs[s]);
-      sigList.push({ signature: allSigs[s], signer: recover });
-    }
-
-    sigList.sort((a, b) => {
-      return ethers.BigNumber.from(a.signer).sub(ethers.BigNumber.from(b.signer));
-    });
-
-    console.log("SORTED SIG LIST:", sigList);
-
-    const finalSigList = [];
-    const finalSigners = [];
-    const used = {};
-    for (const s in sigList) {
-      if (!used[sigList[s].signature]) {
-        finalSigList.push(sigList[s].signature);
-        finalSigners.push(sigList[s].signer);
-      }
-      used[sigList[s].signature] = true;
-    }
-
-    console.log("FINAL SIG LIST:", finalSigList);
-    return [finalSigList, finalSigners];
-  };
-
-  if (!signaturesRequired) {
-    return <Spin />;
+  async function getPendingTransactions() {
+    await axios
+      .get(apiBaseUrl + "transactions")
+      .then(res => {
+        console.log("res.data.content", res.data.content);
+        setTxPending(res.data.content.txs);
+      })
+      .catch(err => {
+        console.error(err);
+      });
   }
 
-  console.log("transactions",transactions)
+  async function pushToDataBase(txId, sign) {
+    await axios
+      .get(apiBaseUrl + `singleTransaction/${txId}`)
+      .then(async res => {
+        await axios.post(apiBaseUrl + `updateSingleTransaction/${txId}`, { sign });
+        getPendingTransactions();
+        return true;
+      })
+      .catch(err => {
+        console.log("erreur while pushing sign to database : ", err);
+        return false;
+      });
+  }
+
+  async function sign(tx) {
+    setLoading(true);
+    try {
+      console.log("signer address : ", address);
+      console.log("members : ", members);
+      if (!members.includes(address)) throw "You're not a member !";
+      let hash = await MultiSigCm.getHash(tx.callData, tx.to, tx.value, tx.neededSigns, tx.txId);
+      console.log("hash :", hash);
+      const signature = await signer.signMessage(ethers.utils.arrayify(hash));
+      await pushToDataBase(tx.txId, signature);
+      setLoading(false);
+    } catch (err) {
+      console.log("erreur when signing : ", err);
+      alert(err);
+      setLoading(false);
+    }
+  }
+
+  async function send(tx) {
+    try {
+      setLoading(true);
+      if (!members.includes(address)) throw "You're not a member !";
+      const sendTx = await txHelper(
+        MultiSigCm.execute(tx.callData, tx.to, tx.value, tx.neededSigns, tx.txId, tx.signatures),
+        async update => {
+          if (update && (update.status === "confirmed" || update.status === 1)) {
+            await axios.get(apiBaseUrl + `deleteTx/${tx.txId}`);
+          }
+        },
+      );
+    } catch (err) {
+      console.log("erreur while sending execute functin to BC", err);
+      alert(err);
+    } finally {
+      setLoading(false);
+      getPendingTransactions();
+    }
+  }
+
+  useEffect(() => {
+    getPendingTransactions();
+    const intervale = setInterval(() => {
+      getPendingTransactions();
+    }, 10000); // 10s
+    return () => clearInterval(intervale);
+  }, []);
+
+  console.log("txPending : ", txPending);
 
   return (
-    <div style={{ maxWidth: 750, margin: "auto", marginTop: 32, marginBottom: 32 }}>
-      <h1>
-        <b style={{ padding: 16 }}>#{nonce ? nonce.toNumber() : <Spin />}</b>
-      </h1>
-
-      <List
-        bordered
-        dataSource={transactions}
-        renderItem={item => {
-          console.log("ITE88888M", item);
-
-          const hasSigned = item.signers.indexOf(address) >= 0;
-          const hasEnoughSignatures = item.signatures.length <= signaturesRequired.toNumber();
-
-          return (
-            <TransactionListItem item={item} mainnetProvider={mainnetProvider} blockExplorer={blockExplorer} price={price} readContracts={readContracts} contractName={contractName}>
-              <span>
-                {item.signatures.length}/{signaturesRequired.toNumber()} {hasSigned ? "✅" : ""}
-              </span>
-              <Button
-                onClick={async () => {
-                  console.log("item.signatures", item.signatures);
-
-                  const newHash = await readContracts[contractName].getTransactionHash(
-                    item.nonce,
-                    item.to,
-                    parseEther("" + parseFloat(item.amount).toFixed(12)),
-                    item.data,
-                  );
-                  console.log("newHash", newHash);
-
-                  const signature = await userProvider.send("personal_sign", [newHash, address]);
-                  console.log("signature", signature);
-
-                  const recover = await readContracts[contractName].recover(newHash, signature);
-                  console.log("recover--->", recover);
-
-                  const isOwner = await readContracts[contractName].isOwner(recover);
-                  console.log("isOwner", isOwner);
-
-                  if (isOwner) {
-                    const [finalSigList, finalSigners] = await getSortedSigList(
-                      [...item.signatures, signature],
-                      newHash,
-                    );
-                    const res = await axios.post(poolServerUrl, {
-                      ...item,
-                      signatures: finalSigList,
-                      signers: finalSigners,
-                    });
-                  }
-
-                  // tx( writeContracts[contractName].executeTransaction(item.to,parseEther(""+parseFloat(item.amount).toFixed(12)), item.data, item.signatures))
+    <div
+      className="Transactions"
+      style={{
+        display: "flex",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        flexDirection: "column",
+      }}
+    >
+      <Card
+        title="Pending transactions"
+        style={{ display: "flex", flexDirection: "column", fontSize: "1rem", width: "500px", maxWidth: "100%" }}
+      >
+        {txPending
+          ? txPending.map((tx, index) => (
+              <Row
+                key={index + "" + tx.txId}
+                style={{
+                  display: "flex",
+                  Border: "solid 1px black",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-evenly",
                 }}
-                type="secondary"
               >
-                Sign
-              </Button>
-              <Button
+                #{tx.txId}
+                <Address address={tx.to} />
+                <div style={{ display: "flex", flexDirection: "column", fontSize: "0.75rem" }}>
+                  <div>
+                    {tx.functionName === "" ? "Transfert" : tx.functionName.substring(0, tx.functionName.indexOf("("))}
+                  </div>
+                  <div>
+                    {tx.params[1] == ""
+                      ? "Ξ" + ethers.utils.formatEther(tx.value).substring(0, 12)
+                      : tx.params[1].length < 12
+                      ? ("" + tx.params[1]).substring(0, 12) + "..."
+                      : tx.params[1]}
+                  </div>
+                </div>
+                {tx.signatures?.length}/{Number(neededSigns)}
+                <div style={{ display: "flex", flexDirection: "column", fontSize: "0.75rem" }}>
+                  <Button loading={loading} onClick={() => sign(tx)}>
+                    Sign
+                  </Button>
+                  <Button
+                    type="primary"
+                    disabled={memberRole != 4 && tx.signatures?.length < neededSigns}
+                    style={{ marginTop: "5px" }}
+                    loading={loading}
+                    onClick={() => send(tx)}
+                  >
+                    send
+                  </Button>
+                </div>
+                <Button
+                  danger
+                  disabled={memberRole != 1 && memberRole != 4}
+                  icon={<DeleteOutlined />}
+                  onClick={async () => {
+                    setLoading(true);
+                    await axios.get(apiBaseUrl + `deleteTx/${tx.txId}`);
+                    getPendingTransactions();
+                    setLoading(false);
+                  }}
+                ></Button>
+                <Divider />
+              </Row>
+            ))
+          : null}
+      </Card>
 
-                key={item.hash}
-                
-                onClick={async () => {
-                  const newHash = await readContracts[contractName].getTransactionHash(
-                    item.nonce,
-                    item.to,
-                    parseEther("" + parseFloat(item.amount).toFixed(12)),
-                    item.data,
-                  );
-                  console.log("newHash", newHash);
-
-                  console.log("item.signatures", item.signatures);
-
-                  const [finalSigList, finalSigners] = await getSortedSigList(item.signatures, newHash);
-
-                  tx(
-                    writeContracts[contractName].executeTransaction(
-                      item.to,
-                      parseEther("" + parseFloat(item.amount).toFixed(12)),
-                      item.data,
-                      finalSigList,
-                    ),
-                  );
-                }}
-                type={hasEnoughSignatures ? "primary" : "secondary"}
-              >
-                Exec
-              </Button>
-          </TransactionListItem>
-          );
-        }}
-      />
+      <List title="Transactions done">
+        Tx Done : <br />
+        <Events
+          contracts={readContracts}
+          contractName="MetaMultiSigWallet"
+          eventName="TxSent"
+          localProvider={localProvider}
+          mainnetProvider={mainnetProvider}
+          startBlock={1}
+        />
+      </List>
     </div>
   );
 }
+
+export default Transactions;

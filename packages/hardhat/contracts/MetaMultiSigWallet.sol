@@ -44,13 +44,16 @@ contract MetaMultiSigWallet {
         _;
     }
 
-    function addSigner(address newSigner, uint256 newSignaturesRequired) public onlySelf {
+    function addSigner(address newSigner) public onlySelf {
         require(newSigner != address(0), "addSigner: zero address");
         require(!isOwner[newSigner], "addSigner: owner not unique");
-        require(newSignaturesRequired > 0, "addSigner: must be non-zero sigs required");
         isOwner[newSigner] = true;
-        signaturesRequired = newSignaturesRequired;
         emit Owner(newSigner, isOwner[newSigner]);
+    }
+
+    function setSignersRequired(uint8 newSignaturesRequired) public onlySelf {
+        require(newSignaturesRequired > 0, "addSigner: must be non-zero sigs required");
+        signaturesRequired = newSignaturesRequired;
     }
 
     function removeSigner(address oldSigner, uint256 newSignaturesRequired) public onlySelf {
