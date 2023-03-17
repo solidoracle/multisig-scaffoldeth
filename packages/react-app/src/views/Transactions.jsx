@@ -11,7 +11,6 @@ import Events from "../components/Events";
 import { DeleteOutlined } from "@ant-design/icons";
 
 function Transactions({
-  memberRole,
   address,
   apiBaseUrl,
   localProvider,
@@ -19,17 +18,15 @@ function Transactions({
   writeContracts,
   neededSigns,
   signer,
-  members,
   txHelper,
   readContracts,
 }) {
   // const contracts = useContractLoader(signer, contractConfig, chainId);
-  const MultiSigCm = writeContracts ? writeContracts["MultiSigCm"] : "";
-  const enumRole = ["null", "admin", "user", "dude"]; //just to remember
+  const MultiSig = writeContracts ? writeContracts["MetaMultiSigWallet"] : "";
   const [loading, setLoading] = useState(false);
   const [txPending, setTxPending] = useState([]);
 
-  // const executeTx = useContractLoader(writeContracts, "MultiSigCm", "execute")
+  // const executeTx = useContractLoader(writeContracts, "MetaMultiSigWallet", "execute")
 
   async function getPendingTransactions() {
     await axios
@@ -61,9 +58,7 @@ function Transactions({
     setLoading(true);
     try {
       console.log("signer address : ", address);
-      console.log("members : ", members);
-      if (!members.includes(address)) throw "You're not a member !";
-      let hash = await MultiSigCm.getHash(tx.callData, tx.to, tx.value, tx.neededSigns, tx.txId);
+      let hash = await MultiSig.getHash(tx.callData, tx.to, tx.value, tx.neededSigns, tx.txId);
       console.log("hash :", hash);
       const signature = await signer.signMessage(ethers.utils.arrayify(hash));
       await pushToDataBase(tx.txId, signature);
@@ -78,9 +73,8 @@ function Transactions({
   async function send(tx) {
     try {
       setLoading(true);
-      if (!members.includes(address)) throw "You're not a member !";
       const sendTx = await txHelper(
-        MultiSigCm.execute(tx.callData, tx.to, tx.value, tx.neededSigns, tx.txId, tx.signatures),
+        MultiSig.execute(tx.callData, tx.to, tx.value, tx.neededSigns, tx.txId, tx.signatures),
         async update => {
           if (update && (update.status === "confirmed" || update.status === 1)) {
             await axios.get(apiBaseUrl + `deleteTx/${tx.txId}`);
@@ -103,8 +97,6 @@ function Transactions({
     }, 10000); // 10s
     return () => clearInterval(intervale);
   }, []);
-
-  console.log("txPending : ", txPending);
 
   return (
     <div
@@ -154,7 +146,7 @@ function Transactions({
                   </Button>
                   <Button
                     type="primary"
-                    disabled={memberRole != 4 && tx.signatures?.length < neededSigns}
+                    disabled={tx.signatures?.length < neededSigns}
                     style={{ marginTop: "5px" }}
                     loading={loading}
                     onClick={() => send(tx)}
@@ -164,7 +156,6 @@ function Transactions({
                 </div>
                 <Button
                   danger
-                  disabled={memberRole != 1 && memberRole != 4}
                   icon={<DeleteOutlined />}
                   onClick={async () => {
                     setLoading(true);

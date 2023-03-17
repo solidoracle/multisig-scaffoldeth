@@ -37,8 +37,8 @@ export default function Events({ contracts, contractName, eventName, localProvid
             <List.Item key={item.blockNumber + "_" + item.args.sender + "_" + item.args.purpose}>
               Addres to : <Address address={item.args[0]} ensProvider={mainnetProvider} fontSize={16} /> <br />
               Amount : {ethers.utils.formatEther(item.args[1])} <br />
-              <p>CallData sent :</p>
-              <p style={{ wordWrap: "break-word" }}>{item.args[2]}</p>
+              {/* <p>CallData sent :</p> */}
+              {/* <p style={{ wordWrap: "break-word" }}>{item.args[2]}</p> */}
             </List.Item>
           );
         }}

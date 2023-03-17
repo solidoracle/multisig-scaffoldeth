@@ -11,6 +11,7 @@ import { Account, Contract, Faucet, GasGauge, Header, Ramp, ThemeSwitch, Address
 import Multisig from "./components/Multisig";
 import deployedContracts from "./contracts/hardhat_contracts.json";
 import externalContracts from "./contracts/external_contracts";
+import { ethers } from "ethers";
 
 import {
   useExchangePrice,
@@ -51,7 +52,7 @@ import { CreateTransaction, Transactions, Owners, FrontPage } from "./views";
 */
 
 /// 📡 What chain are your contracts deployed to?
-const targetNetwork = NETWORKS["localhost"]; // <------- select your target frontend network (localhost, rinkeby, xdai, mainnet)
+const targetNetwork = NETWORKS.goerli; // <------- select your target frontend network (localhost, rinkeby, xdai, mainnet)
 
 // const poolServerUrl = "https://backend.multisig.holdings:49832/";
 const poolServerUrl = "https://sore-erin-beaver-ring.cyclic.app/api/";
@@ -74,7 +75,9 @@ const localProviderUrl = targetNetwork.rpcUrl;
 // as you deploy to other networks you can set REACT_APP_PROVIDER=https://dai.poa.network in packages/react-app/.env
 const localProviderUrlFromEnv = process.env.REACT_APP_PROVIDER ? process.env.REACT_APP_PROVIDER : localProviderUrl;
 if (DEBUG) console.log("🏠 Connecting to provider:", localProviderUrlFromEnv);
-const localProvider = new StaticJsonRpcProvider(localProviderUrlFromEnv);
+console.log("🏠 Connecting to provider:", localProviderUrlFromEnv);
+const localProvider = new ethers.providers.StaticJsonRpcProvider(localProviderUrlFromEnv);
+console.log("************************localProvider is:", localProvider);
 
 // 🔭 block explorer URL
 const blockExplorer = targetNetwork.blockExplorer;
@@ -94,7 +97,10 @@ function App(props) {
   // const userProvider = useUserProvider(injectedProvider, localProvider);
   // const address = useUserAddress(userProvider);
   const userProviderAndSigner = useUserProviderAndSigner(injectedProvider, localProvider);
+  console.log(userProviderAndSigner, "userProviderAndSigner");
+
   const userSigner = userProviderAndSigner.signer;
+  const userProvider = userProviderAndSigner.provider;
 
   useEffect(() => {
     async function getAddress() {
@@ -114,7 +120,10 @@ function App(props) {
   // For more hooks, check out 🔗eth-hooks at: https://www.npmjs.com/package/eth-hooks
 
   // The transactor wraps transactions and provides notificiations
-  const tx = Transactor(userProviderAndSigner, gasPrice);
+  const tx = Transactor(userSigner, gasPrice);
+  console.log(userSigner, "userSigner");
+  console.log(gasPrice, "gasPrice");
+  console.log(tx, "tx");
 
   // Faucet Tx can be used to send funds from the faucet
   const faucetTx = Transactor(localProvider, gasPrice);
@@ -125,11 +134,17 @@ function App(props) {
   // Just plug in different 🛰 providers to get your balance on different chains:
   const yourMainnetBalance = useBalance(mainnetProvider, address);
 
+  const contractConfig = { deployedContracts: deployedContracts || {}, externalContracts: externalContracts || {} };
+
   // Load in your local 📝 contract and read a value from it:
-  const readContracts = useContractLoader(localProvider);
+  // const readContracts = useContractLoader(localProvider);
+  const readContracts = useContractLoader(localProvider, contractConfig);
 
   // If you want to make 🔐 write transactions to your contracts, use the userProvider:
-  const writeContracts = useContractLoader(userProviderAndSigner);
+  // const writeContracts = useContractLoader(userProviderAndSigner);
+  const writeContracts = useContractLoader(userSigner, contractConfig, localChainId);
+
+  console.log(writeContracts);
 
   const contractName = "MetaMultiSigWallet";
 
@@ -153,6 +168,7 @@ function App(props) {
 
   //📟 Listen for broadcast events
   const ownerEvents = useEventListener(readContracts, contractName, "Owner", localProvider, 1);
+
   if (DEBUG) console.log("📟 ownerEvents:", ownerEvents);
 
   // If you want to bring in the mainnet DAI contract it would look like:
@@ -301,7 +317,18 @@ function App(props) {
 
   const MultiSig = readContracts ? readContracts["MetaMultiSigWallet"] : "";
 
-  const contractConfig = { deployedContracts: deployedContracts || {}, externalContracts: externalContracts || {} };
+  //get members of the multisig
+  const [owners, setOwners] = useState([]);
+
+  async function getOwners() {
+    let newMembers = await MultiSig.getOwners();
+    setOwners(newMembers);
+  }
+
+  useEffect(() => {
+    if (MultiSig && userSigner) getOwners();
+  }, [MultiSig, userSigner]);
+
   // const userProviderAndSigner = useUserProviderAndSigner(injectedProvider, localProvider);
   // const userSigner = userProviderAndSigner.signer;
 
@@ -380,7 +407,7 @@ function App(props) {
             apiBaseUrl={poolServerUrl}
             writeContracts={writeContracts}
             price={price}
-            // members={members}
+            members={owners}
             // setMembers={setMembers}
             mainnetProvider={mainnetProvider}
             neededSigns={neededSigns}

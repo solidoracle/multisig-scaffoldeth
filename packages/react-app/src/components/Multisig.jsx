@@ -7,6 +7,7 @@ import proposeTx from "../helpers/propseTx";
 import AddSignatures from "./AddSignatures";
 import SendEth from "./SendEth";
 import AddCustomCall from "./AddCustomCall";
+import Members from "./Members";
 
 export default function Multisig({
   provider,
@@ -18,6 +19,7 @@ export default function Multisig({
   blockExplorer,
   multiSigAdd,
   signaturesRequired,
+  members,
 }) {
   return (
     <div style={{ display: "flex", justifyContent: "center", marginTop: "15px" }}>
@@ -28,23 +30,21 @@ export default function Multisig({
             <Address address={multiSigAdd} />{" "}
             <Balance address={multiSigAdd} provider={provider} dollarMultiplier={price} />
           </span>
-          <div>Signatures Required: {signaturesRequired ? signaturesRequired.toNumber() : <Spin></Spin>}</div>
           <Divider />
         </Row>
+        <div>Signatures Required: {signaturesRequired ? signaturesRequired.toNumber() : <Spin></Spin>}</div>
+
         <h3>Active Owners :</h3>
 
-        <List
-          style={{ maxWidth: 400, margin: "auto" }}
-          bordered
-          dataSource={ownerEvents}
-          renderItem={item => {
-            return (
-              <List.Item key={"owner_" + item[0]}>
-                <Address address={item[0]} ensProvider={mainnetProvider} blockExplorer={blockExplorer} fontSize={32} />
-                <div style={{ padding: 16 }}>{item[1] ? "👍" : "👎"}</div>
-              </List.Item>
-            );
-          }}
+        <Members
+          members={members}
+          // roles={roles}
+          multiSigAdd={multiSigAdd}
+          neededSigns={neededSigns}
+          mainnetProvider={mainnetProvider}
+          apiBaseUrl={apiBaseUrl}
+          // memberRole={memberRole}
+          // address={address}
         />
 
         <Divider />
